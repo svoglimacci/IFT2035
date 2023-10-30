@@ -1,0 +1,89 @@
+\documentclass[12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{parskip}
+\usepackage[margin=25mm]{geometry}
+\begin{document}
+\begin{titlepage}
+  \centering
+  {Université de Montréal\par}
+  \vfill
+  {Travail Pratique 1\par}
+  \vfill
+  {par\\Simon \MakeUppercase{Voglimacci Stéphanopoli}\\Julie \MakeUppercase{Yang}}
+  \vfill
+  Département d'informatique et de recherche opérationnelle\\
+  Faculté des arts et des sciences\par
+  \vfill
+  Programme :\\Baccalauréat en Informatique\par
+  \vfill
+  Travail présenté à\\Stefan Monnier\\dans le cadre du cours IFT 2035
+  \vfill
+  \today\par
+\end{titlepage}
+
+\section{Objectif}
+L'objectif de ce travail pratique est de compléter l'implémentation d'un interpréteur \textit{Slip}, un language de programmation similaire à Lisp. Celui-ci doit être capable de convertir une expression symbolique \textit{Sexp} en expression lambda \textit{Lexp} et d'évaluer le résultat final.
+
+\section{Lecture du code source}
+Nous avons identifié certaines parties importantes du code fourni :
+    
+\begin{itemize} 
+    \item\textbf{Sexp:} Abréviation de \textit{Symbolic Expression}. Notation utilisé en programmation pour représenter des données de façon structuré. Les Sexp \textit{préfixée} sont écrites de manière préfixée où les opérateurs précèdent leurs opérandes. Les éléments d'un \textit{Sexp} peuvent être soit un nombre, un symbole ou une liste d'éléments. 
+    
+    \item \textbf{Lexp:} Représentation d'une expression quelconque sous la forme d'une expression lambda. Elle sert d'étape intermédiaire afin d'arriver au résultat final d'une expression \textit{Sexp}.
+    
+    \item\textbf{Heap:} Le tas est une structure de donnée utilisée pour la gestion de la mémoire. Pour ce travail, il est représenté sous forme d'un arbre binaire de type \textit{Trie}. Pour un noeud \textit{p}, sa position est déterminée par la séquence de bits dans la représentation binaire de \textit{p}. Deux fonctions sont définies:
+    
+    \begin{itemize}
+        \item {hinsert:} Doit permettre d'ajouter de l'information à une addresse \textit{p}.
+        \item {hlookup:} Permet d'aller chercher l'information se trouvant à l'adresse \textit{p}.
+    \end{itemize}
+    
+    \item \textbf{env0} : Représente l'environnement initial qui contient les fonctions prédéfinies du langage telles que les opérations arithmétiques de base et les opérations logiques comme l'égalité et la comparaison.  
+    
+    \item \textbf{Vfun} : Constructeur de type \textit{Value} représentant des fonctions suite à l'évaluation d'une \textit{Lexp}. Un \textit{Vfun} encapsule une fonction et un environnement où la fonction est définie (fermeture).
+\end{itemize}
+
+\section{Recherches préliminaires}
+Suite à l'analyse du code source, nous concluons qu'un approfondissement des sujets suivants sont nécessaires: 
+
+\subsection{GHCi Debugger}
+Pour la réussite de ce travail, nous jugeons que les outils de débogage propres à Haskell sont nécessaires. Après un survol de la documentation officielle, nous optons pour l'utilisation de quelques commandes de bases telles que \textit{:print}, \textit{:force}, \textit{:continue}, \textit{:break} et \textit{:show}. Ces commandes nous permettront d'analyser les données à certains points de l'exécution du programme afin de localiser les parties du code qui causent des erreurs.
+
+\subsection{Fonctions map et fold}
+Nous pensons que les fonctions \textit{map} et \textit{fold} devront être utilisées pour l'implémentation des appels de fonctions et des déclarations locales récursives en raison de leurs représentation intermédiaires exigeant respectivements des tableaux de type [\textit{Lexp}] et [\textit{Var}, \textit{Lexp}]. La méthode \textit{fold} sera probablement très utilisée lors de l'évaluation en raison du \textit{currying}.
+
+\subsection{Trie}
+Des informations additionnelles sont requises pour l'implémentation du \textit{tas}, puisque le \textit{Trie} semble prendre plusieurs formes. À première vue, l'arbre semble être un arbre binaire complet possédant une racine vide. Une analyse plus approfondie des exemples de tests donnés et des fonctions \textit{hlookup} et \textit{hinsert} décrit la présence d'une racine contenant l'index 0, induisant donc un arbre partiellement vide.
+
+\subsection{Currying}
+Les arguments lors d'un appel de fonction sont dit \textit{curried} lorsque la fonction ne prend qu'un seul argument à la fois au lieu de tous ses arguments. Par conséquent, une fonction prenant plusieurs arguments peut être considérée comme une suite de fonctions à argument simple appliquées successivement. Ce concept est nécessaire lors de l'évaluation de \textit{Lfuncall} et de l'utilisation des opérateurs binaires déjà implémentés dans l'environnement tels que \textit{biniiv} et \textit{binop}.
+
+\section{Implémentations}
+\subsection{s2l}
+    Le processus d'implémentation du \textit{s2l} était relativement simple : nous avons analysé les \textit{Sexp}, les avons comparés aux \textit{Lexp}, puis effectué la conversion entre les deux. L'implémentation de \textit{Lrec} a posé le plus de difficulté lors de cette étape. Nous avons opté pour une fonction auxiliaire \textit{s2letrec} pour "\textit{mapper}" les arguments ainsi que leurs variables assignées. Suite à un échec des tests proposés, nous constatons que la liste de variables et d'expressions en argument est une structure composée de plusieurs \textit{Snode} imbriqués, chacun reliant une variable à son expression respective. D'autre part, l'implémentation de \textit{Lfuncall} est étonnamment simple, malgré la complexité du \textit{currying} lors de l'évaluation. Nous avons cependant oublié d'ajuster l'ordre d'application des fonctions: \textit{Lfuncall} doit impérativement être à la toute fin pour éviter de prendre préséance sur les cas ayant le même format d'argument.
+\pagebreak
+\subsection{hinsert}
+    Nous avons eu de la difficulté à comprendre la structure du trie ainsi que le lien entre \textit{Vref} et la valeur du \textit{LState} lors de l'évaluation. Nous avons d'abord tenté d'implémenter un arbre complet, puis un arbre où la branche de gauche était complètement vide. Les deux approches se sont révélées incohérentes, car l'insertion à l'adresse 0 était nécessaire. Aussi, laisser la moitié gauche vide empêchait la fonction \textit{hlookup} de fonctionner correctement. Une fois avoir correctement visualisé la structure de l'arbre, l'implémentation est devenue plus facie. Par contre, nous avions oublié de vérifier la parité lors de l'insertion sur un \textit{Hnode} "\textit{Nothing}", ce qui entraînait une insertion aux mauvais endroits.
+
+
+\subsection{eval}
+    Les principales difficultés rencontrées lors de l'implémentation de l'évaluateur concernaient \textit{Lfuncall}, \textit{Letrec} ainsi que les fonctions utilisant les \textit{ref-cells} telles que \textit{Lmkref}, \textit{Lderef} et \textit{Lassign}.
+
+\paragraph{Lfuncall}
+    Comprendre comment appliquer le concept de \textit{currying} s'est avéré difficile, alors plus de recherche sur les opérateurs binaires dans l'environnement est nécessaire. Nous avons également rencontré des difficultés lors de l'utilisation de \textit{Vfun}  pour des fonctions partielles, comme (+ 2), appliqué à d'autres valeurs. Pour la première implémentation, nous décidons d'utiliser \textit{foldr}. Cependant, l'ordre des opérations binaires est incorrect lors des tests de \textit{Lrec}. Heureusement, nous avons rapidement résolu le problème en utilisant \textit{foldl} à la place.
+
+\paragraph{Lrec}
+    Pour l'évaluateur \textit{Lrec}, l'utilisation de \textit{foldr} est incorrecte. Ceci entraine un \textit{Vfun} erroné à être enregistré dans le nouvel environnement et celui-ci n'était pas accessible par les fonctions lambda imbriquées. Nous avons alors essayé une nouvelle implémentation utilisant \textit{map}, mais les résultats attendus pour l'état et l'environnement ne correspondent pas. Finalement, comme le problème semble être similaire à celui de l'implémentation de l'évaluateur \textit{Lfuncall}, nous avons choisi d'utiliser \textit{foldl} pour la gestion de l'environnement et du \textit{Lstate}. Une fonction auxiliaire a été ajoutée afin d'incrémenter l'état en fonction de l'expression utilisée en argument, mais cet ajout a été inutile.
+
+\paragraph{Lmkref, Lderef et Lassign}
+   En ce qui concerne l'implémentation des \textit{ref-cells} —\textit{Lmkref}, \textit{Lderef} et \textit{Lassign}—  les défis auxquels nous avons été confrontés résultent principalement de notre incompréhension initiale de la structure de l'arbre plutôt que de la complexité du code lui-même. Le premier problème est survenu lors de la gestion de la \textit{Maybe Value} utilisée dans le tas. Nous avons oublié d'utiliser \textit{fromJust} pour y accéder avec \textit{Lderef}. De plus, nous n'avons pas incrémenté l'adresse renvoyée par \textit{Lmkref}, ce qui cause des problèmes lors de l'éxecution des tests.
+
+   Finalement, nous avons réalisé qu'il aurait été plus pratique de déstructurer l'argument \textit{State} sous la forme (\textit{Heap, Int}) pour éviter l'utilisation excessive de \textit{fst} et \textit{snd}.
+
+
+\section{Conclusion}
+
+En conclusion, l'analyse préliminaire du code source a été l'étape la plus importante pour la réussite de ce projet. Les difficultés rencontrées lors de l'implémentation est principalement dû à un manque de compréhension des structures de données utilisées et des caractéristiques spécifiques au language, telles que les arguments \textit{curried}. Consacrer davantage de temps à la lecture de la documentation aurait été plus efficace que de s'en remettre aux essais-erreurs. De plus, le débogueur \textit{GHCi} s'est avéré précieux pour résoudre les divers problèmes rencontrés tout au long du travail.
+
+\end{document}

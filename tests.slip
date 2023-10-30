@@ -1,0 +1,57 @@
+;;; Tests supplémentaires                -*- mode: lisp-data; coding: utf-8 -*-
+
+
+(let <= >=
+  (if (<= 5 6) 1 2))                                                ; ↝ 2
+
+((λ x (* x 2)) 4)                                                   ; ↝ 8
+
+(let x 5
+  (let y 10
+    (if (< x y) true false)))                                       ; ↝ True
+
+(letrec ((fst (ref! 10))
+         (snd (ref! 20)))
+  snd)                                                              ; ↝ ptr<1>
+
+
+((λ x (+ x 1)) )                                                 ; ↝ <function>
+
+
+(let x (ref! 10)
+  (let y (ref! 20)
+    (let _ (set! x 30)
+      (let _ (set! y 40)
+        (+ (get! x) (get! y))))))                                     ; ↝ 70
+
+
+(let double (λ x (* x 2))
+  (double 5))                                                         ; ↝ 10
+
+ (letrec ((fib (λ n
+                (if (= n 0) 0
+                  (if (= n 1) 1
+                    (+ (fib (- n 1)) (fib (- n 2))))))))
+  (fib 7))                                                            ; ↝ 13
+
+(letrec ((outer (λ x
+                    (letrec ((inner (λ x
+                                          (if (= x 0)
+                                              1
+                                              (* x (inner (- x 1))))
+                                    )
+                            ))
+                      (+ x (inner x))
+                    )
+                  )
+        ))
+  (outer 5)
+)                                                                     ; ↝ 125
+
+(letrec ((c1 (ref! 1))
+         (c2 (ref! 2))
+         (c3 (ref! 3)))
+  (let _ (set! c1 (+ 1 (get! c1)))
+    (let _ (set! c2 (+ 1 (get! c2)))
+      (let _ (set! c3 (+ 1 (get! c3)))
+        (+ (get! c1) (+ (get! c2) (get! c3)))))))                     ; ↝ 9
