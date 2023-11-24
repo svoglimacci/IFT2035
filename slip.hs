@@ -204,7 +204,12 @@ data Lexp = Llit Int             -- Litéral entier.
 s2l :: Sexp -> Lexp
 s2l (Snum n) = Llit n
 s2l (Ssym s) = Lid s
-s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
+
+s2l (Snode (Ssym "λ") [Snode (Ssym v) (x:xs), e]) =
+  let innerLambda = s2l (Snode (Ssym "λ") (if null xs then [x, e] else [Snode x xs, e]))
+  in Labs v innerLambda
+
+s2l (Snode (Ssym "begin") es) = foldr (Ldec "_" . s2l) (s2l (last es)) (init es)
 s2l (Snode (Ssym "ref!") [e]) = Lmkref (s2l e)
 s2l (Snode (Ssym "get!") [e]) = Lderef (s2l e)
 s2l (Snode (Ssym "set!") [e1, e2]) = Lassign (s2l e1) (s2l e2)
