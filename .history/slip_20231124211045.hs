@@ -354,8 +354,6 @@ synth _ (Llit _) = (Tint, [])
 synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
 
-
--- this is probably wrong
 synth env (Lfuncall _ es) =
   let types = map (synth env) es
       errors = concatMap snd types
@@ -370,13 +368,15 @@ synth env (Labs x e) =
   in (Tabs Tunknown t1, errors)
 
 synth env (Ldec x e1 e2) = synth ((x, Tunknown) : env) e2
-
-synth env (Lite e1 e2 e3) =
-  let types = map (synth env) [e1, e2, e3]
+synth env (Lrec decls body) =
+  let env' = map (\(x, _) -> (x, Tunknown)) decls ++ env
+      types = map (\(_, e) -> synth env' e) decls
       errors = concatMap snd types
-  in case types of
-    [] -> (Tunknown, ["Expression conditionnelle sans arguments"])
-    _  -> (fst (last types), errors)
+  in if not (null errors)
+     then (Tunknown, "Erreur de type dans les déclarations" : errors)
+     else let env'' = zipWith (\(x, _) (t, _) -> (x, t)) decls types ++ env
+              (t, errors') = synth env'' body
+          in (t, errors ++ errors')
 
 synth _   e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 

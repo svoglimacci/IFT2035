@@ -15,8 +15,7 @@ import Text.ParserCombinators.Parsec -- Librairie d'analyse syntaxique.
 import Data.Char        -- Conversion de Chars de/vers Int et autres
 -- import Numeric       -- Pour la fonction showInt
 import System.IO        -- Pour stdout, hPutStr
-import Data.Maybe    -- Pour isJust and fromJust
-import Data.Functor.Classes (eq1)
+-- import Data.Maybe    -- Pour isJust and fromJust
 
 ---------------------------------------------------------------------------
 -- La représentation interne des expressions de notre language           --
@@ -331,7 +330,7 @@ tenv0 = map (\(x,_v,t) -> (x,t)) env0
 ---------------------------------------------------------------------------
 
 type TErrors = [String]
-
+-- check :  Γ ⊢ e ⇐ τ
 -- `check Γ e τ` vérifie que `e` a type `τ` dans l'environnment `Γ`.
 check :: TEnv -> Lexp -> Type -> TErrors
 check env (Lite ec et ee) t =
@@ -339,48 +338,34 @@ check env (Lite ec et ee) t =
     ++ check env et t
     ++ check env ee t
 
-check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
-check _ (Labs _ _) t = ["Fonction de type " ++ show t ++ " attendue"]
 check env e t =
     let (t', errors) = synth env e
     -- Si `synth` renvoie `Tunknown` il doit y avoir des erreurs.
     in if t == t' || t' == Tunknown then errors
        else ("Expression a type \"" ++ show t'
             ++ "\" au lieu de: " ++ show t) : errors
-
+-- synth :  Γ ⊢ e ⇒ τ
 -- `synth Γ e` synthétise le type `τ` de `e` dans l'environnment `Γ`.
 synth :: TEnv -> Lexp -> (Type, TErrors)
-synth _ (Llit _) = (Tint, [])
+-- if Γ(x) = τ then  Γ ⊢ x ⇒ τ
 synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
+-- Γ ⊢ n ⇒ Int
+synth _ (Llit _) = (Tint, [])
 
-
--- this is probably wrong
-synth env (Lfuncall _ es) =
-  let types = map (synth env) es
-      errors = concatMap snd types
-  in if not (null errors)
-     then (Tunknown, "Erreur de type dans les arguments de la fonction" : errors)
-     else case types of
-       [] -> (Tunknown, ["Appel de fonction sans arguments"])
-       _  -> (fst (last types), [])
-
+-- if Γ, x : τ1 ⊢ e ⇐ τ2 then Γ ⊢ (λ x e) ⇐ (τ1 → τ2)
 synth env (Labs x e) =
-  let (t1, errors) = synth ((x, Tunknown) : env) e
-  in (Tabs Tunknown t1, errors)
+    let (t1, errors) = synth env e
+    in (Tabs t1 Tunknown, errors ++ check (madd env x t1) e Tunknown)
 
-synth env (Ldec x e1 e2) = synth ((x, Tunknown) : env) e2
-
-synth env (Lite e1 e2 e3) =
-  let types = map (synth env) [e1, e2, e3]
-      errors = concatMap snd types
-  in case types of
-    [] -> (Tunknown, ["Expression conditionnelle sans arguments"])
-    _  -> (fst (last types), errors)
+-- if Γ ⊢ e1 ⇒ (τ1 → τ2) and 	Γ ⊢ e2 ⇐ τ1 then Γ ⊢ (e1 e2) ⇒ τ2
+-- Lfuncall :: Lexp %1 -> [Lexp] %1 -> Lexp
+synth env (Lfuncall e1 e2) =
+    let (t1, errors) = synth env e1
+        (t2, errors2) = synth env (head e2)
+    in (t2, errors ++ errors2 ++ check env e1 (Tabs t1 t2) ++ check env (head e2) t1)
 
 synth _   e = (Tunknown, ["Annotation de type manquante: " ++ show e])
-
-
 
 ---------------------------------------------------------------------------
 -- Évaluateur                                                            --

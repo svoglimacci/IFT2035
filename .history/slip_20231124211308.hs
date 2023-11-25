@@ -354,8 +354,6 @@ synth _ (Llit _) = (Tint, [])
 synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
 
-
--- this is probably wrong
 synth env (Lfuncall _ es) =
   let types = map (synth env) es
       errors = concatMap snd types
@@ -374,9 +372,13 @@ synth env (Ldec x e1 e2) = synth ((x, Tunknown) : env) e2
 synth env (Lite e1 e2 e3) =
   let types = map (synth env) [e1, e2, e3]
       errors = concatMap snd types
-  in case types of
-    [] -> (Tunknown, ["Expression conditionnelle sans arguments"])
-    _  -> (fst (last types), errors)
+  in if not (null errors) then (Tunknown, errors)
+     else case types of
+       [(Tbool, _), (t2, _), (t3, _)] ->
+         if t2 == t3 then (t2, [])
+         else (Tunknown, ["Les branches de l'expression conditionnelle ont des types différents: "
+                          ++ show t2 ++ " et " ++ show t3])
+       _ -> (Tunknown, ["L'expression conditionnelle doit avoir un type booléen"])
 
 synth _   e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 

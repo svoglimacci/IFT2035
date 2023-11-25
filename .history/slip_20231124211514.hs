@@ -354,8 +354,6 @@ synth _ (Llit _) = (Tint, [])
 synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
 
-
--- this is probably wrong
 synth env (Lfuncall _ es) =
   let types = map (synth env) es
       errors = concatMap snd types

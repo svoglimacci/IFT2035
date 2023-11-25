@@ -354,29 +354,22 @@ synth _ (Llit _) = (Tint, [])
 synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
 
+synth env (Lfuncall f []) =
+  let (t, errors) = synth env f
+  in case t of
+    Tabs t1 t2 -> (t2, errors)
+    _ -> (Tunknown, errors ++ ["Pas une fonction: " ++ show f])
 
--- this is probably wrong
-synth env (Lfuncall _ es) =
-  let types = map (synth env) es
-      errors = concatMap snd types
-  in if not (null errors)
-     then (Tunknown, "Erreur de type dans les arguments de la fonction" : errors)
-     else case types of
-       [] -> (Tunknown, ["Appel de fonction sans arguments"])
-       _  -> (fst (last types), [])
+synth env (Lfuncall f (arg1 : args)) =
+  let (t, errors) = synth env f
+  in case t of
+    Tabs t1 t2 ->
+      let (targ1, errors1) = synth env arg1
+      in case targ1 of
+        Tunknown -> (Tunknown, errors1 ++ errors)
+        _ -> synth env (Lfuncall f args)
+    _ -> (Tunknown, errors ++ ["Pas une fonction: " ++ show f])
 
-synth env (Labs x e) =
-  let (t1, errors) = synth ((x, Tunknown) : env) e
-  in (Tabs Tunknown t1, errors)
-
-synth env (Ldec x e1 e2) = synth ((x, Tunknown) : env) e2
-
-synth env (Lite e1 e2 e3) =
-  let types = map (synth env) [e1, e2, e3]
-      errors = concatMap snd types
-  in case types of
-    [] -> (Tunknown, ["Expression conditionnelle sans arguments"])
-    _  -> (fst (last types), errors)
 
 synth _   e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 
