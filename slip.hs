@@ -1,5 +1,6 @@
 -- TP-2  --- Implantation d'une sorte de Lisp          -*- coding: utf-8 -*-
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE BlockArguments #-}
 
 -- Ce fichier défini les fonctionalités suivantes:
 -- - Analyseur lexical
@@ -15,9 +16,8 @@ import Text.ParserCombinators.Parsec -- Librairie d'analyse syntaxique.
 import Data.Char        -- Conversion de Chars de/vers Int et autres
 -- import Numeric       -- Pour la fonction showInt
 import System.IO        -- Pour stdout, hPutStr
-import Data.Maybe    -- Pour isJust and fromJust
-import Data.Functor.Classes (eq1)
-
+import Debug.Trace
+-- import Data.Maybe    -- Pour isJust and fromJust
 ---------------------------------------------------------------------------
 -- La représentation interne des expressions de notre language           --
 ---------------------------------------------------------------------------
@@ -206,6 +206,9 @@ s2l :: Sexp -> Lexp
 s2l (Snum n) = Llit n
 s2l (Ssym s) = Lid s
 
+
+s2l (Snode (Ssym ":") [e, t]) = Ltype (s2l e) (s2t t)
+
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
 s2l (Snode (Ssym "λ") [Snode (Ssym v) (x:xs), e]) =
   let innerLambda = s2l (Snode (Ssym "λ") (if null xs then [x, e] else [Snode x xs, e]))
@@ -225,6 +228,15 @@ s2l (Snode (Ssym "letrec") [decls, e]) = Lrec (s2decs decls) (s2l e)
           s2dec s = error ("Déclaration inconnue: " ++ showSexp s)
 s2l (Snode e es) = Lfuncall (s2l e) (map s2l es)
 s2l se = error ("Expression Slip inconnue: " ++ (showSexp se))
+
+-- Conversion de Sexp à Type -----------------------------------------------
+s2t :: Sexp -> Type
+s2t (Ssym "Int") = Tint
+s2t (Ssym "Bool") = Tbool
+s2t (Snode (Ssym "ref") [t]) = Tref (s2t t)
+s2t (Snode t1 [Ssym "->", t2]) = Tabs (s2t t1) (s2t t2)
+s2t s = error ("Type inconnu: " ++ showSexp s)
+
 
 ---------------------------------------------------------------------------
 -- Représentation du contexte d'exécution                                --
@@ -334,13 +346,16 @@ type TErrors = [String]
 
 -- `check Γ e τ` vérifie que `e` a type `τ` dans l'environnment `Γ`.
 check :: TEnv -> Lexp -> Type -> TErrors
+
+
+check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
+
 check env (Lite ec et ee) t =
+    trace ("check env Lite: " ++ show (ec, et, ee, t)) $
     check env ec Tbool
     ++ check env et t
     ++ check env ee t
 
-check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
-check _ (Labs _ _) t = ["Fonction de type " ++ show t ++ " attendue"]
 check env e t =
     let (t', errors) = synth env e
     -- Si `synth` renvoie `Tunknown` il doit y avoir des erreurs.
@@ -351,35 +366,59 @@ check env e t =
 -- `synth Γ e` synthétise le type `τ` de `e` dans l'environnment `Γ`.
 synth :: TEnv -> Lexp -> (Type, TErrors)
 synth _ (Llit _) = (Tint, [])
+
 synth env (Lid x) = (mlookup env x, [])
+
 synth env (Ltype e t) = (t, check env e t)
 
 
--- this is probably wrong
-synth env (Lfuncall _ es) =
-  let types = map (synth env) es
-      errors = concatMap snd types
-  in if not (null errors)
-     then (Tunknown, "Erreur de type dans les arguments de la fonction" : errors)
-     else case types of
-       [] -> (Tunknown, ["Appel de fonction sans arguments"])
-       _  -> (fst (last types), [])
+synth env (Lfuncall f [args]) = case synth env f of
+  (Tabs t1 t2, _) -> let typeError = check env args t1
+                     in if null typeError then (t2, [])
+                        else (Tunknown, typeError)
+  _ -> (Tunknown, ["Type error in function call"])
 
-synth env (Labs x e) =
-  let (t1, errors) = synth ((x, Tunknown) : env) e
-  in (Tabs Tunknown t1, errors)
+synth env (Lfuncall f (arg1 : args)) =
+  synth env (Lfuncall (Lfuncall f [arg1]) args)
 
-synth env (Ldec x e1 e2) = synth ((x, Tunknown) : env) e2
+synth env (Lite ec et ee) =
+  let (tc, errc) = synth env ec
+      (tt, errt) = synth env et
+      (te, erre) = synth env ee
+  in if tc == Tbool && tt == te then (tt, errc ++ errt ++ erre)
+     else (Tunknown, ("Type error in if expression") : errc ++ errt ++ erre)
 
-synth env (Lite e1 e2 e3) =
-  let types = map (synth env) [e1, e2, e3]
-      errors = concatMap snd types
-  in case types of
-    [] -> (Tunknown, ["Expression conditionnelle sans arguments"])
-    _  -> (fst (last types), errors)
+synth env (Lmkref e) =
+  let (t, errors) = synth env e
+  in (Tref t, errors)
 
-synth _   e = (Tunknown, ["Annotation de type manquante: " ++ show e])
+synth env (Lderef e) =
+  let (t, errors) = synth env e
+  in case t of
+    Tref t' -> (t', errors)
+    _ -> (Tunknown, errors )
 
+synth env (Lassign e1 e2) =
+  let (t1, errors1) = synth env e1
+      (t2, errors2) = synth env e2
+  in case t1 of
+    Tref t -> if t == t2
+              then (t2, errors1 ++ errors2)
+              else (Tunknown, errors1 ++ errors2)
+    _ -> (Tunknown, errors1 ++ errors2)
+
+synth env (Ldec x e1 e2) =
+  let (t1, errors1) = synth env e1
+      env' = madd env x t1
+      (t2, errors2) = synth env' e2
+  in (t2, errors1 ++ errors2)
+
+synth env (Lrec decls body) =
+  let
+      env' = foldl (\innerEnv (x, e) -> madd innerEnv x (fst (synth env e))) env decls
+  in synth env' body
+
+synth _ e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 
 
 ---------------------------------------------------------------------------
