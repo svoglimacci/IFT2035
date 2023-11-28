@@ -209,24 +209,41 @@ s2l (Ssym s) = Lid s
 
 s2l (Snode (Ssym ":") [e, t]) = Ltype (s2l e) (s2t t)
 
+
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
+
+-- (λ (x1 ... xn) e) ≃ (λ x1 ...(λ xn e)..)
 s2l (Snode (Ssym "λ") [Snode (Ssym v) (x:xs), e]) =
   let innerLambda = s2l (Snode (Ssym "λ") (if null xs then [x, e] else [Snode x xs, e]))
   in Labs v innerLambda
 
+--(begin e1 ... en) ≃ (let _ e1 (let _ e2 (... en)..))
 s2l (Snode (Ssym "begin") es) = foldr (Ldec "_" . s2l) (s2l (last es)) (init es)
 s2l (Snode (Ssym "ref!") [e]) = Lmkref (s2l e)
 s2l (Snode (Ssym "get!") [e]) = Lderef (s2l e)
 s2l (Snode (Ssym "set!") [e1, e2]) = Lassign (s2l e1) (s2l e2)
 s2l (Snode (Ssym "if") [e1, e2, e3]) = Lite (s2l e1) (s2l e2) (s2l e3)
 s2l (Snode (Ssym "let") [Ssym x, e1, e2]) = Ldec x (s2l e1) (s2l e2)
-s2l (Snode (Ssym "letrec") [decls, e]) = Lrec (s2decs decls) (s2l e)
+
+-- (let x ex e1 ... en) ≃ (let x ex (begin e1 ... en))
+s2l (Snode (Ssym "let") (Ssym x : ex : es)) = Ldec x (s2l ex) (s2l (Snode (Ssym "begin") es))
+
+
+s2l (Snode (Ssym "letrec") [decls, e]) =
+  --trace ("Executing letrec with declarations: " ++ show decls ++ " and --expression: " ++ show e) $
+  Lrec (s2decs decls) (s2l e)
     where s2decs Snil = []
           s2decs (Snode e1 es) = map s2dec (e1 : es)
           s2decs s = error ("Déclaration inconnue: " ++ showSexp s)
+                -- (x e)
           s2dec (Snode (Ssym x) [e2]) = (x, s2l e2)
           s2dec s = error ("Déclaration inconnue: " ++ showSexp s)
+
+
+
 s2l (Snode e es) = Lfuncall (s2l e) (map s2l es)
+
+
 s2l se = error ("Expression Slip inconnue: " ++ (showSexp se))
 
 -- Conversion de Sexp à Type -----------------------------------------------
@@ -349,6 +366,7 @@ check :: TEnv -> Lexp -> Type -> TErrors
 
 
 check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
+check _ (Labs _ _) t = ["Not a function type: " ++ show t]
 
 check env (Lite ec et ee) t =
     trace ("check env Lite: " ++ show (ec, et, ee, t)) $
@@ -371,15 +389,17 @@ synth env (Lid x) = (mlookup env x, [])
 
 synth env (Ltype e t) = (t, check env e t)
 
+synth env (Lfuncall e1 [e2]) =
+    let (t1, errors1) = synth env e1
+        (t2, errors2) = synth env e2
+    in case t1 of
+      Tabs t1' t2' -> if t1' == t2
+        then (t2', errors1 ++ errors2)
+        else (Tunknown, ("Type attendu: " ++ show t1' ++ " mais reçu: " ++ show t2) : errors1 ++ errors2)
+      _ -> (Tunknown, ("pas une fonction: " ++ show t1) : errors1 ++ errors2)
 
-synth env (Lfuncall f [args]) = case synth env f of
-  (Tabs t1 t2, _) -> let typeError = check env args t1
-                     in if null typeError then (t2, [])
-                        else (Tunknown, typeError)
-  _ -> (Tunknown, ["Type error in function call"])
-
-synth env (Lfuncall f (arg1 : args)) =
-  synth env (Lfuncall (Lfuncall f [arg1]) args)
+synth env (Lfuncall e0 (e1 : es)) =
+    synth env (Lfuncall (Lfuncall e0 [e1]) es)
 
 synth env (Lite ec et ee) =
   let (tc, errc) = synth env ec
