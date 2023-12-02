@@ -207,7 +207,12 @@ s2l (Snum n) = Llit n
 s2l (Ssym s) = Lid s
 
 
+
+
 s2l (Snode (Ssym ":") [e, t]) = Ltype (s2l e) (s2t t)
+
+s2l (Snode (Ssym "x") [Snode (Ssym "x1") [t1], t2, e]) =
+  Ltype (Labs "x" (s2l e)) (Tabs (Tref (s2t t1)) (s2t t2))
 
 
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
@@ -229,15 +234,24 @@ s2l (Snode (Ssym "let") [Ssym x, e1, e2]) = Ldec x (s2l e1) (s2l e2)
 s2l (Snode (Ssym "let") (Ssym x : ex : es)) = Ldec x (s2l ex) (s2l (Snode (Ssym "begin") es))
 
 
+-- ((x (x1 τ1) ... (xn τn)) τ e1 ... en) ≃ (x (: (lambda (x1 ... xn) e1 ... en)(τ1 .. τn → τ )))
+--- ((f (x Int)) Int (λ x (+ x 1))) ≃ (f (: (λ x (+ x 1)) (Int -> Int)))
+
+--- (      letrec ( ((f (x Int)) Int (λ x (+ x 1))) )   (f 5))
+
+
+
 s2l (Snode (Ssym "letrec") [decls, e]) =
-  --trace ("Executing letrec with declarations: " ++ show decls ++ " and --expression: " ++ show e) $
+
   Lrec (s2decs decls) (s2l e)
     where s2decs Snil = []
           s2decs (Snode e1 es) = map s2dec (e1 : es)
           s2decs s = error ("Déclaration inconnue: " ++ showSexp s)
-                -- (x e)
+          -- (x e)
           s2dec (Snode (Ssym x) [e2]) = (x, s2l e2)
+          s2dec (Snode (Snode (Ssym x) [xt]) [t, en]) = (x, Ltype (Labs x (s2l en)) (Tabs Tint Tint))
           s2dec s = error ("Déclaration inconnue: " ++ showSexp s)
+
 
 
 
@@ -251,8 +265,20 @@ s2t :: Sexp -> Type
 s2t (Ssym "Int") = Tint
 s2t (Ssym "Bool") = Tbool
 s2t (Snode (Ssym "ref") [t]) = Tref (s2t t)
-s2t (Snode t1 [Ssym "->", t2]) = Tabs (s2t t1) (s2t t2)
+
+s2t (Snode e es) =
+  case es of
+    (Ssym "->" : xs) ->
+                         Tabs (s2t e) (foldr (Tabs . s2t) (s2t (last xs)) (init xs))
+    (_ : _) -> if last (init es) == Ssym "->"
+                  then
+                       Tabs (s2t (head es)) (foldr (Tabs . s2t) (s2t (last es)) (init (init es)))
+                  else error ("Type inconnu: " ++ showSexp (Snode e es))
+    _ -> error ("Type inconnu: " ++ showSexp (Snode e es))
+
+
 s2t s = error ("Type inconnu: " ++ showSexp s)
+
 
 
 ---------------------------------------------------------------------------
@@ -364,12 +390,9 @@ type TErrors = [String]
 -- `check Γ e τ` vérifie que `e` a type `τ` dans l'environnment `Γ`.
 check :: TEnv -> Lexp -> Type -> TErrors
 
-
 check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
-check _ (Labs _ _) t = ["Not a function type: " ++ show t]
 
 check env (Lite ec et ee) t =
-    trace ("check env Lite: " ++ show (ec, et, ee, t)) $
     check env ec Tbool
     ++ check env et t
     ++ check env ee t
@@ -400,6 +423,7 @@ synth env (Lfuncall e1 [e2]) =
 
 synth env (Lfuncall e0 (e1 : es)) =
     synth env (Lfuncall (Lfuncall e0 [e1]) es)
+
 
 synth env (Lite ec et ee) =
   let (tc, errc) = synth env ec
@@ -435,11 +459,23 @@ synth env (Ldec x e1 e2) =
 
 synth env (Lrec decls body) =
   let
-      env' = foldl (\innerEnv (x, e) -> madd innerEnv x (fst (synth env e))) env decls
-  in synth env' body
+      env' = map (\(x,e) -> (x, fst (synth env e))) decls ++ env
+      in if all (\(_,e) -> null (snd (synth env' e)) ) decls
+         then synth env' body
+         else (Tunknown, ["Erreur dans les déclarations"])
 
 synth _ e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 
+{--
+Γ′ = Γ, x1 : τ1, ..., xn : τn    Γ′ ⊢ e ⇒ τ      ∀i. Γ′ ⊢ ei ⇒ τi
+-------------------------------------------------------------------
+Γ ⊢ (letrec (x1 e1) ... (xn en) e) ⇒ τ
+
+
+step 1 : create env' with decls and env
+step 2 : synth env' body
+step 3 : synth env' decls
+--}
 
 ---------------------------------------------------------------------------
 -- Évaluateur                                                            --
