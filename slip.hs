@@ -1,6 +1,8 @@
 -- TP-2  --- Implantation d'une sorte de Lisp          -*- coding: utf-8 -*-
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE BlockArguments #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use lambda-case" #-}
 
 -- Ce fichier défini les fonctionalités suivantes:
 -- - Analyseur lexical
@@ -206,23 +208,14 @@ s2l :: Sexp -> Lexp
 s2l (Snum n) = Llit n
 s2l (Ssym s) = Lid s
 
-
-
-
 s2l (Snode (Ssym ":") [e, t]) = Ltype (s2l e) (s2t t)
-
-s2l (Snode (Ssym "x") [Snode (Ssym "x1") [t1], t2, e]) =
-  Ltype (Labs "x" (s2l e)) (Tabs (Tref (s2t t1)) (s2t t2))
-
 
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
 
--- (λ (x1 ... xn) e) ≃ (λ x1 ...(λ xn e)..)
 s2l (Snode (Ssym "λ") [Snode (Ssym v) (x:xs), e]) =
   let innerLambda = s2l (Snode (Ssym "λ") (if null xs then [x, e] else [Snode x xs, e]))
   in Labs v innerLambda
 
---(begin e1 ... en) ≃ (let _ e1 (let _ e2 (... en)..))
 s2l (Snode (Ssym "begin") es) = foldr (Ldec "_" . s2l) (s2l (last es)) (init es)
 s2l (Snode (Ssym "ref!") [e]) = Lmkref (s2l e)
 s2l (Snode (Ssym "get!") [e]) = Lderef (s2l e)
@@ -230,35 +223,28 @@ s2l (Snode (Ssym "set!") [e1, e2]) = Lassign (s2l e1) (s2l e2)
 s2l (Snode (Ssym "if") [e1, e2, e3]) = Lite (s2l e1) (s2l e2) (s2l e3)
 s2l (Snode (Ssym "let") [Ssym x, e1, e2]) = Ldec x (s2l e1) (s2l e2)
 
--- (let x ex e1 ... en) ≃ (let x ex (begin e1 ... en))
 s2l (Snode (Ssym "let") (Ssym x : ex : es)) = Ldec x (s2l ex) (s2l (Snode (Ssym "begin") es))
 
-
--- ((x (x1 τ1) ... (xn τn)) τ e1 ... en) ≃ (x (: (lambda (x1 ... xn) e1 ... en)(τ1 .. τn → τ )))
---- ((f (x Int)) Int (λ x (+ x 1))) ≃ (f (: (λ x (+ x 1)) (Int -> Int)))
-
---- (      letrec ( ((f (x Int)) Int (λ x (+ x 1))) )   (f 5))
-
-
-
 s2l (Snode (Ssym "letrec") [decls, e]) =
-
   Lrec (s2decs decls) (s2l e)
     where s2decs Snil = []
           s2decs (Snode e1 es) = map s2dec (e1 : es)
           s2decs s = error ("Déclaration inconnue: " ++ showSexp s)
-          -- (x e)
           s2dec (Snode (Ssym x) [e2]) = (x, s2l e2)
-          s2dec (Snode (Snode (Ssym x) [xt]) [t, en]) = (x, Ltype (Labs x (s2l en)) (Tabs Tint Tint))
+          s2dec (Snode (Snode (Ssym x) xt) [t, en]) =
+              let extractedTypes = map (\xt' -> case xt' of
+                          (Snode _ [t']) -> s2t t'
+                          _ -> error "Valeur de Sexp inattendu") xt
+                  returnType = s2t t
+              in (x, Ltype (s2l en) (foldr Tabs returnType extractedTypes))
           s2dec s = error ("Déclaration inconnue: " ++ showSexp s)
-
-
-
 
 s2l (Snode e es) = Lfuncall (s2l e) (map s2l es)
 
 
 s2l se = error ("Expression Slip inconnue: " ++ (showSexp se))
+
+
 
 -- Conversion de Sexp à Type -----------------------------------------------
 s2t :: Sexp -> Type
@@ -275,7 +261,6 @@ s2t (Snode e es) =
                        Tabs (s2t (head es)) (foldr (Tabs . s2t) (s2t (last es)) (init (init es)))
                   else error ("Type inconnu: " ++ showSexp (Snode e es))
     _ -> error ("Type inconnu: " ++ showSexp (Snode e es))
-
 
 s2t s = error ("Type inconnu: " ++ showSexp s)
 
@@ -430,7 +415,7 @@ synth env (Lite ec et ee) =
       (tt, errt) = synth env et
       (te, erre) = synth env ee
   in if tc == Tbool && tt == te then (tt, errc ++ errt ++ erre)
-     else (Tunknown, ("Type error in if expression") : errc ++ errt ++ erre)
+     else (Tunknown, "Erreur de typage dans l'expression if" : errc ++ errt ++ erre)
 
 synth env (Lmkref e) =
   let (t, errors) = synth env e
@@ -462,20 +447,9 @@ synth env (Lrec decls body) =
       env' = map (\(x,e) -> (x, fst (synth env e))) decls ++ env
       in if all (\(_,e) -> null (snd (synth env' e)) ) decls
          then synth env' body
-         else (Tunknown, ["Erreur dans les déclarations"])
+         else (Tunknown, ["Erreur dans les déclarations" ++ show decls])
 
 synth _ e = (Tunknown, ["Annotation de type manquante: " ++ show e])
-
-{--
-Γ′ = Γ, x1 : τ1, ..., xn : τn    Γ′ ⊢ e ⇒ τ      ∀i. Γ′ ⊢ ei ⇒ τi
--------------------------------------------------------------------
-Γ ⊢ (letrec (x1 e1) ... (xn en) e) ⇒ τ
-
-
-step 1 : create env' with decls and env
-step 2 : synth env' body
-step 3 : synth env' decls
---}
 
 ---------------------------------------------------------------------------
 -- Évaluateur                                                            --
