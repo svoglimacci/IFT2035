@@ -5,20 +5,16 @@
 
 (+ 2 4)                                 ; ↝ 6 : Tint
 
-
 ( (: (λ x x)
         (Int -> Int))
     2)                             ; ↝ 2 : Tint
-
 
 ( ( (: (λ (x y) (* x y)) (Int Int -> Int))
             3)
       5)                                ; ↝ 15 : Tint
 
-
 (let true false
   (if true 1 2))                       ; ↝ 2 : Tint
-
 
 (ref! 5)                                ; ↝ ptr<0> : Tref Tint
 
@@ -35,7 +31,6 @@
      (set! c3 (+ 1 (get! c3)))
       (+ (get! c1) (+ (get! c2) (get! c3)))))))  ; ↝ 9 :Tint
 
-
 (letrec ((c1 (ref! 1))
          (c2 (ref! 2))
          (c3 (ref! 3)))
@@ -46,7 +41,6 @@
   (letrec ((+ 1)
            (- 2))
     (a + -)))                           ; ↝ 3 : Tint
-
 
 (letrec ( ((odd (x Int)) Bool (λ x (if (= x 1) true (even (- x 1)))))
           ((even (x Int)) Bool (λ x (if (= x 0) true (odd (- x 1))))))

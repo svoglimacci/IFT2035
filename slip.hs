@@ -19,6 +19,7 @@ import Data.Char        -- Conversion de Chars de/vers Int et autres
 -- import Numeric       -- Pour la fonction showInt
 import System.IO        -- Pour stdout, hPutStr
 import Debug.Trace
+
 -- import Data.Maybe    -- Pour isJust and fromJust
 ---------------------------------------------------------------------------
 -- La représentation interne des expressions de notre language           --
@@ -208,7 +209,8 @@ s2l :: Sexp -> Lexp
 s2l (Snum n) = Llit n
 s2l (Ssym s) = Lid s
 
-s2l (Snode (Ssym ":") [e, t]) = Ltype (s2l e) (s2t t)
+s2l (Snode (Ssym ":") [e, t]) =  Ltype (s2l e) (s2t t)
+
 
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
 
@@ -258,7 +260,7 @@ s2t (Snode e es) =
                          Tabs (s2t e) (foldr (Tabs . s2t) (s2t (last xs)) (init xs))
     (_ : _) -> if last (init es) == Ssym "->"
                   then
-                       Tabs (s2t (head es)) (foldr (Tabs . s2t) (s2t (last es)) (init (init es)))
+                       Tabs (s2t e) (foldr (Tabs . s2t) (s2t (last es)) (init (init es)))
                   else error ("Type inconnu: " ++ showSexp (Snode e es))
     _ -> error ("Type inconnu: " ++ showSexp (Snode e es))
 
@@ -375,7 +377,7 @@ type TErrors = [String]
 -- `check Γ e τ` vérifie que `e` a type `τ` dans l'environnment `Γ`.
 check :: TEnv -> Lexp -> Type -> TErrors
 
-check env (Labs x e) (Tabs t1 t2) = check ((x, t1) : env) e t2
+check env (Labs x e) (Tabs t1 t2) = check (madd env x t1) e t2
 
 check env (Lite ec et ee) t =
     check env ec Tbool
@@ -398,13 +400,13 @@ synth env (Lid x) = (mlookup env x, [])
 synth env (Ltype e t) = (t, check env e t)
 
 synth env (Lfuncall e1 [e2]) =
-    let (t1, errors1) = synth env e1
-        (t2, errors2) = synth env e2
+    let (t1, errors1) =   synth env e1
+        (t2, errors2) =   synth env e2
     in case t1 of
       Tabs t1' t2' -> if t1' == t2
         then (t2', errors1 ++ errors2)
-        else (Tunknown, ("Type attendu: " ++ show t1' ++ " mais reçu: " ++ show t2) : errors1 ++ errors2)
-      _ -> (Tunknown, ("pas une fonction: " ++ show t1) : errors1 ++ errors2)
+        else (Tunknown, errors1 ++ errors2)
+      _ ->  (Tunknown, errors1 ++ errors2)
 
 synth env (Lfuncall e0 (e1 : es)) =
     synth env (Lfuncall (Lfuncall e0 [e1]) es)
@@ -415,7 +417,7 @@ synth env (Lite ec et ee) =
       (tt, errt) = synth env et
       (te, erre) = synth env ee
   in if tc == Tbool && tt == te then (tt, errc ++ errt ++ erre)
-     else (Tunknown, "Erreur de typage dans l'expression if" : errc ++ errt ++ erre)
+     else (Tunknown, errc ++ errt ++ erre);
 
 synth env (Lmkref e) =
   let (t, errors) = synth env e
@@ -445,9 +447,11 @@ synth env (Ldec x e1 e2) =
 synth env (Lrec decls body) =
   let
       env' = map (\(x,e) -> (x, fst (synth env e))) decls ++ env
-      in if all (\(_,e) -> null (snd (synth env' e)) ) decls
-         then synth env' body
-         else (Tunknown, ["Erreur dans les déclarations" ++ show decls])
+      errors = concatMap (\(_,e) -> snd (synth env' e)) decls
+  in if null errors
+     then synth env' body
+     else (Tunknown, errors)
+
 
 synth _ e = (Tunknown, ["Annotation de type manquante: " ++ show e])
 
