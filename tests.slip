@@ -15,8 +15,6 @@
          (snd (ref! 20)))
   snd)                                                              ; ↝ ptr<1> Tref Tint
 
-
-
 (let double (:(λ x (* x 2))
                     (Int Int -> Int))
   (double 5))                                                       ; ↝ 10 : Tint

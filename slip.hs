@@ -214,11 +214,25 @@ s2l (Snode (Ssym ":") [e, t]) =  Ltype (s2l e) (s2t t)
 
 s2l (Snode (Ssym "λ") [Ssym x, e]) = Labs x (s2l e)
 
+-- (λ (x1 ... xn) e) ≃ (λ x1 ...(λ xn e)..)
 s2l (Snode (Ssym "λ") [Snode (Ssym v) (x:xs), e]) =
   let innerLambda = s2l (Snode (Ssym "λ") (if null xs then [x, e] else [Snode x xs, e]))
   in Labs v innerLambda
 
-s2l (Snode (Ssym "begin") es) = foldr (Ldec "_" . s2l) (s2l (last es)) (init es)
+-- (begin e1 ... en) ≃ (let _ e1 (let _ e2 (... en)..))
+s2l (Snode (Ssym "begin") (e:es)) = let
+  innerLet = case es of
+    [] -> Ldec "_" (s2l e) (Lid "_")
+    _ -> Ldec "_" (s2l e) (s2l (Snode (Ssym "begin") es))
+  in innerLet
+
+-- (λ xs e1 ... en) ≃ (λ xs (begin e1 ... en))
+s2l (Snode (Ssym "λ") (args:es)) =
+  case args of
+    (Snode (Ssym x) []) -> Labs x (s2l (Snode (Ssym "begin") es))
+    (Snode (Ssym x) (x':xs)) -> Labs x (s2l (Snode (Ssym "λ") ((Snode x' xs):es)))
+    _ -> error "Erreur de syntaxe"
+
 s2l (Snode (Ssym "ref!") [e]) = Lmkref (s2l e)
 s2l (Snode (Ssym "get!") [e]) = Lderef (s2l e)
 s2l (Snode (Ssym "set!") [e1, e2]) = Lassign (s2l e1) (s2l e2)
