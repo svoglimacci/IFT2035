@@ -1,1 +1,38 @@
+(let <= >=
+  (if (<= 5 6) 1 2))                                                ; ↝ 2 : Tint
 
+
+( ( (: (λ (x y) (* x y)) (Int Int -> Int))
+            3)
+      5)                                                                   ; ↝ 8
+
+(let x 5
+  (let y 10
+    (if (< x y) true false)))                                  ; ↝ True : Tbool
+
+
+(letrec ((fst (ref! 10))
+         (snd (ref! 20)))
+  snd)                                                              ; ↝ ptr<1> Tref Tint
+
+
+
+(let double (:(λ x (* x 2))
+                    (Int Int -> Int))
+  (double 5))                                                       ; ↝ 10 : Tint
+
+(letrec ((outer (:(λ x
+                    (letrec ((inner (:(λ x
+                                          (if (= x 0)
+                                              1
+                                              (* x (inner (- x 1))))
+                                    )
+                                    (Int -> Int))
+                            ))
+                      (+ x (inner x))
+                    )
+                  )
+                  (Bool -> Int))
+        ))
+  (outer 5)
+)                                                                     ; ↝ 125 : Tint

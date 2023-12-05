@@ -405,8 +405,8 @@ synth env (Lfuncall e1 [e2]) =
     in case t1 of
       Tabs t1' t2' -> if t1' == t2
         then (t2', errors1 ++ errors2)
-        else (Tunknown, errors1 ++ errors2)
-      _ ->  (Tunknown, errors1 ++ errors2)
+        else (Tunknown, ["Erreur de type dans l'appel de fonction"])
+      _ ->  (Tunknown, ["Erreur de type dans l'appel de fonction"])
 
 synth env (Lfuncall e0 (e1 : es)) =
     synth env (Lfuncall (Lfuncall e0 [e1]) es)
@@ -417,7 +417,7 @@ synth env (Lite ec et ee) =
       (tt, errt) = synth env et
       (te, erre) = synth env ee
   in if tc == Tbool && tt == te then (tt, errc ++ errt ++ erre)
-     else (Tunknown, errc ++ errt ++ erre);
+     else (Tunknown, ["Erreur de type dans le if/then/else"]);
 
 synth env (Lmkref e) =
   let (t, errors) = synth env e
@@ -427,7 +427,7 @@ synth env (Lderef e) =
   let (t, errors) = synth env e
   in case t of
     Tref t' -> (t', errors)
-    _ -> (Tunknown, errors )
+    _ -> (Tunknown, ["Erreur de type dans le deref"] )
 
 synth env (Lassign e1 e2) =
   let (t1, errors1) = synth env e1
@@ -435,8 +435,8 @@ synth env (Lassign e1 e2) =
   in case t1 of
     Tref t -> if t == t2
               then (t2, errors1 ++ errors2)
-              else (Tunknown, errors1 ++ errors2)
-    _ -> (Tunknown, errors1 ++ errors2)
+              else (Tunknown, ["Erreur de type dans l'assignation"])
+    _ -> (Tunknown, ["Erreur de type dans l'assignation"])
 
 synth env (Ldec x e1 e2) =
   let (t1, errors1) = synth env e1
@@ -450,7 +450,7 @@ synth env (Lrec decls body) =
       errors = concatMap (\(_,e) -> snd (synth env' e)) decls
   in if null errors
      then synth env' body
-     else (Tunknown, errors)
+     else (Tunknown, ["Erreur de type dans la déclaration récursive"])
 
 
 synth _ e = (Tunknown, ["Annotation de type manquante: " ++ show e])
