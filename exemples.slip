@@ -43,16 +43,11 @@
            (- 2))
     (a + -)))                           ; ↝ 3 : Tint
 
-(letrec ( ((odd (x Int)) Bool (λ x (if (= x 1) true (even (- x 1)))))
-          ((even (x Int)) Bool (λ x (if (= x 0) true (odd (- x 1))))))
+(letrec ( ((odd (x Int)) Bool  (if (= x 1) true (even (- x 1))))
+          ((even (x Int)) Bool (if (= x 0) true (odd (- x 1)))))
 (odd 7))                                ; ↝ True : Tbool
 
-(letrec ( ((fac (x Int)) Int (λ x (if (< x 2) x (* x (fac (- x 1))))))) (fac 5))
+(letrec ( ((fac (x Int)) Int  (if (< x 2) x (* x (fac (- x 1)))))) (fac 5))
                                         ; ↝ 120 : Tint
-
-
-
-
-
 
 

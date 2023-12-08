@@ -248,11 +248,17 @@ s2l (Snode (Ssym "letrec") [decls, e]) =
           s2decs s = error ("Déclaration inconnue: " ++ showSexp s)
           s2dec (Snode (Ssym x) [e2]) = (x, s2l e2)
           s2dec (Snode (Snode (Ssym x) xt) [t, en]) =
-              let extractedTypes = map (\xt' -> case xt' of
+              let
+                  extractedVars = map (\xv' -> case xv' of
+                          (Snode (Ssym x') _) -> x'
+                          _ -> error "Valeur de Sexp inattendu") xt
+                  extractedTypes = map (\xt' -> case xt' of
                           (Snode _ [t']) -> s2t t'
                           _ -> error "Valeur de Sexp inattendu") xt
                   returnType = s2t t
-              in (x, Ltype (s2l en) (foldr Tabs returnType extractedTypes))
+                  nestedLabs = foldr Labs (s2l en) extractedVars
+
+              in (x, Ltype nestedLabs (foldr Tabs returnType extractedTypes))
           s2dec s = error ("Déclaration inconnue: " ++ showSexp s)
 
 s2l (Snode e es) = Lfuncall (s2l e) (map s2l es)
@@ -413,18 +419,16 @@ synth env (Lid x) = (mlookup env x, [])
 
 synth env (Ltype e t) = (t, check env e t)
 
-synth env (Lfuncall e1 [e2]) =
-    let (t1, errors1) =   synth env e1
-        (t2, errors2) =   synth env e2
-    in case t1 of
-      Tabs t1' t2' -> if t1' == t2
-        then (t2', errors1 ++ errors2)
-        else (Tunknown, ["Erreur de type dans l'appel de fonction"])
-      _ ->  (Tunknown, ["Erreur de type dans l'appel de fonction"])
 
-synth env (Lfuncall e0 (e1 : es)) =
-    synth env (Lfuncall (Lfuncall e0 [e1]) es)
-
+synth env (Lfuncall e es) = case length es of
+  1 -> let (t1, errors1) = synth env e
+           (t2, errors2) = synth env (head es)
+       in case t1 of
+            Tabs t1' t2' -> if t1' == t2
+                            then (t2', errors1 ++ errors2)
+                            else (Tunknown, ["Erreur de type dans l'appel de fonction"])
+            _ ->  (Tunknown, ["Erreur de type dans l'appel de fonction"])
+  _ -> synth env (Lfuncall (Lfuncall e [head es]) (tail es))
 
 synth env (Lite ec et ee) =
   let (tc, errc) = synth env ec
