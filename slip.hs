@@ -241,8 +241,8 @@ s2l (Snode (Ssym "let") [Ssym x, e1, e2]) = Ldec x (s2l e1) (s2l e2)
 
 s2l (Snode (Ssym "let") (Ssym x : ex : es)) = Ldec x (s2l ex) (s2l (Snode (Ssym "begin") es))
 
-s2l (Snode (Ssym "letrec") [decls, e]) =
-  Lrec (s2decs decls) (s2l e)
+s2l (Snode (Ssym "letrec") (decls : es1)) =
+  Lrec (s2decs decls) (s2l (Snode (Ssym "begin") es1))
     where s2decs Snil = []
           s2decs (Snode e1 es) = map s2dec (e1 : es)
           s2decs s = error ("Déclaration inconnue: " ++ showSexp s)
@@ -272,7 +272,7 @@ s2l se = error ("Expression Slip inconnue: " ++ (showSexp se))
 s2t :: Sexp -> Type
 s2t (Ssym "Int") = Tint
 s2t (Ssym "Bool") = Tbool
-s2t (Snode (Ssym "ref") [t]) = Tref (s2t t)
+s2t (Snode (Ssym "Ref") [t]) = Tref (s2t t)
 
 s2t (Snode e es) =
   case es of
@@ -418,17 +418,14 @@ synth _ (Llit _) = (Tint, [])
 synth env (Lid x) = (mlookup env x, [])
 
 synth env (Ltype e t) = (t, check env e t)
+synth env (Lfuncall e []) = synth env e
+synth env (Lfuncall e [es]) = let (t, errors) = synth env e
+                              in case t of
+                                Tabs t1 t2 -> (t2, check env es t1 ++ errors)
+                                _ -> (Tunknown, ["Erreur de type dans l'appel de fonction"])
 
-
-synth env (Lfuncall e es) = case length es of
-  1 -> let (t1, errors1) = synth env e
-           (t2, errors2) = synth env (head es)
-       in case t1 of
-            Tabs t1' t2' -> if t1' == t2
-                            then (t2', errors1 ++ errors2)
-                            else (Tunknown, ["Erreur de type dans l'appel de fonction"])
-            _ ->  (Tunknown, ["Erreur de type dans l'appel de fonction"])
-  _ -> synth env (Lfuncall (Lfuncall e [head es]) (tail es))
+synth env (Lfuncall e (es)) =
+  synth env (Lfuncall (Lfuncall e (init es)) [last es])
 
 synth env (Lite ec et ee) =
   let (tc, errc) = synth env ec

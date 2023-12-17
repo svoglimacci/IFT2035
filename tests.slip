@@ -1,36 +1,65 @@
-(let <= >=
-  (if (<= 5 6) 1 2))                                                ; ↝ 2 : Tint
+;;; Tests de typage                     -*- mode: lisp-data; coding: utf-8 -*-
 
 
-( ( (: (λ (x y) (* x y)) (Int Int -> Int))
-            3)
-      5)                                                                   ; ↝ 8
 
-(let x 5
-  (let y 10
-    (if (< x y) true false)))                                  ; ↝ True : Tbool
+; Expression a type "Tint" au lieu de: Tabs Tint Tint
+; la fonction prend un argument Tint et non pas deux.
+
+( (: (λ x (* x x))
+        (Int -> (Int -> Int)))
+    3)
 
 
-(letrec ((fst (ref! 10))
-         (snd (ref! 20)))
-  snd)                                                              ; ↝ ptr<1> Tref Tint
+; Erreur de type dans le if/then/else
+; la fonction devrait retourner un Tint
+; mais retourne Tbool
 
-(let double (:(λ x (* x 2))
-                    (Int Int -> Int))
-  (double 5))                                                       ; ↝ 10 : Tint
+(: (let true false
+  (if true 1 2)) Bool)                       ; ↝ 2 : Tint
 
-(letrec ((outer (:(λ x
-                    (letrec ((inner (:(λ x
-                                          (if (= x 0)
-                                              1
-                                              (* x (inner (- x 1))))
-                                    )
-                                    (Int -> Int))
-                            ))
-                      (+ x (inner x))
-                    )
-                  )
-                  (Bool -> Int))
-        ))
-  (outer 5)
-)                                                                     ; ↝ 125 : Tint
+
+; Expression a type "Tref Tint" au lieu de: Tint
+; la fonction essaie d'additionner un Tref à un Tbool
+
+(let c1 (ref! 5)
+ (let c2 c1
+  (begin (set! c2 6)
+   (+ (c1) (get! c2)))))           ; ↝ 12 : Tint
+
+
+; Expression a type "Tbool" au lieu de: Tint
+; l'on essaie d'additionner deux Tbool.
+
+(letrec ((a +)
+         (s -))
+  (letrec ((+ true)
+           (- false))
+    (a + -)))                           ; ↝ 3 : Tint
+
+
+; Erreur de type dans la déclaration récursive
+; la fonction tente d'additionner un Tbool à un Int.
+
+(letrec ( ((odd (x Bool)) Bool  (if (= x 1) true (even (- x 1))))
+          ((even (x Int)) Bool (if (= x 0) true (odd (- x 1)))))
+(odd 7))                                ; ↝ True : Tbool
+
+
+; Erreur de type dans la déclaration récursive
+; La fonction ne contient aucun typage
+
+ (letrec ((fib (λ n
+                (if (= n 0) 0
+                  (if (= n 1) 1
+                    (+ (fib (- n 1)) (fib (- n 2))))))))
+  (fib 7))
+
+
+
+; Erreur de type dans l'assignation
+; l'argument x est un Tint et non pas un Tref Tint. get! x renvoie la valeur
+; de x et non pas sa référence.
+
+(: (let x (ref! (: 5 (Ref Int) ))
+  (set! x (* (get! x) (get! x)))
+  (get! x)) (Ref Int))
